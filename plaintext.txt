@@ -1,3 +1,1 @@
-Today is Tuesday, February 7th.
-Tomorrow is Wednesday, February 8th.
-Day after tomorrow is Thursday, February 9th.
+Today is Tuesday.
