@@ -127,9 +127,9 @@ def inverse_initial_permutation(block: list) -> list:
 
 def sbox_substitution(input_block, sbox_index):
     """
-
-    :param input_block:
-    :return:
+    Performs sbox substitution for one input block
+    :param input_block: list of 6 bits
+    :return: list of 4 bits
     """
     row = int(''.join(str(b) for b in input_block[0:2]), 2)
     column = int(''.join(str(b) for b in input_block[2:6]), 2)
@@ -181,7 +181,10 @@ def key_schedule(key: list) -> list:
 
 def f_function(R: list, subkey: list) -> list:
     """
-    Perform the f function on a 32-bit block and a 48-bit subkey
+    Performs the f function on a 32-bit block and a 48-bit subkey
+    :arg R: list of 32 bits (half block) of initial permutation input
+    :arg subkey: list of 48 bits obtained from key_schedule
+    :return: # TODO: Check return value for correctness
     """
     # Expand the 32-bit block to 48-bits using E table
     R = [R[x - 1] for x in E]
@@ -197,8 +200,9 @@ def f_function(R: list, subkey: list) -> list:
     for i in range(8):
         S_boxes.append(sbox_substitution(R[i], i))
 
-
     result = [nibble for S_box in S_boxes for nibble in S_box]
+
+    # TODO: Missing potential bit shift
 
     # Perform permutation using P
     result = [result[p - 1] for p in P]
@@ -209,10 +213,10 @@ def f_function(R: list, subkey: list) -> list:
 
 def encrypt(block: list, subkeys: list) -> list:
     """
-
-    :param block:
-    :param subkeys:
-    :return ciphertext:
+    Encrypts a block of input text and performs 16 DES cycles
+    :param block: list of 64 bits
+    :param subkeys: list of 48 bits
+    :return: list of 64 bits of encrypted text
     """
 
     # permuted block
@@ -237,15 +241,21 @@ def encrypt(block: list, subkeys: list) -> list:
 
     return ciphertext
 
-
-# TODO: Implement
+# TODO: Check for correctness because encryption is incorrect
 def decrypt(ciphertext: list, key: list) -> list:
+    """
+    Decrypts block of 64 bits to return original plain text
+    :param ciphertext: list of 64 bits
+    :param key: list of 48 bits # TODO: check process of decrypting
+    :return: list of 64 bits of original plain text
+    """
+
     ciphertext = initial_permutation(ciphertext)
     L, R = ciphertext[:32], ciphertext[32:]
     subkeys = key_schedule(key)
     for i in range(15, -1, -1):
         temp = R
-        R = L ^ f_function(R, subkeys[i])
+        R = xor(L, f_function(R, subkeys[i]))
         L = temp
     block = inverse_initial_permutation(R + L)
     return block
@@ -289,7 +299,7 @@ def generate_key(password: str) -> list:
     """
     Converts password into a 56-bit key
     :param password: string user input
-    :return key: list of bits representing password
+    :return: list of bits representing password
     """
 
     # list containing bytes representing each character in password
