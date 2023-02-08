@@ -124,6 +124,133 @@ def inverse_initial_permutation(block: list) -> list:
     """
     return [block[x - 1] for x in IP_inverse]
 
+
+def sbox_substitution(input_block, sbox_index):
+    """
+
+    :param input_block:
+    :return:
+    """
+    row = int(''.join(str(b) for b in input_block[0:2]), 2)
+    column = int(''.join(str(b) for b in input_block[2:6]), 2)
+    output = S[sbox_index][row][column]
+    output = format(output, '04b')
+    output = [int(bit) for bit in output]
+    return output
+
+
+def key_schedule(key: list) -> list:
+    """
+    Generate sub-keys from the given key using key schedule algorithm
+    :arg key: list containing 56-bit key
+    :return subkeys:
+    """
+
+    # check for odd parity
+    key_after_parity = [key[i:i + 7] for i in range(0, len(key), 7)]
+    for bit in key_after_parity:
+        if bit.count(1) % 2:
+            bit.append(0)
+        else:
+            bit.append(1)
+    key_after_parity = [bit for byte in key_after_parity for bit in byte]
+    print(f"Key before permute but after parity is:\n{''.join([str(bit) for bit in key_after_parity])}\n")
+
+    # Permute the key using PC1 table
+    key_after_permutation = [key_after_parity[x - 1] for x in PC1]
+    print(f"Key after permute is:\n{''.join([str(bit) for bit in key_after_permutation])}\n")
+
+    # Split the key into left and right 28-bit halves
+    C, D = key_after_permutation[:28], key_after_permutation[28:]
+
+    # Generate 16 sub-keys by rotating left halves and right halves by 1 or 2 bits
+    subkeys = []
+    for i in range(16):
+        if i in [0, 1, 8, 15]:
+            C = C[1:] + C[:1]
+            D = D[1:] + D[:1]
+        else:
+            C = C[2:] + C[:2]
+            D = D[2:] + D[:2]
+        subkey = C + D
+        subkey = [subkey[x - 1] for x in PC2]
+        subkeys.append(subkey)
+
+    return subkeys
+
+
+def f_function(R: list, subkey: list) -> list:
+    """
+    Perform the f function on a 32-bit block and a 48-bit subkey
+    """
+    # Expand the 32-bit block to 48-bits using E table
+    R = [R[x - 1] for x in E]
+    print(f"Expansion permutation: {''.join([str(bit) for bit in R])}\n")
+
+    # XOR the expanded block with the subkey
+    R = [x ^ y for x, y in zip(R, subkey)]
+    print(f"XOR with key: {''.join([str(bit) for bit in R])}\n")
+
+    # Perform S-Box substitution using S
+    R = [R[i:i + 6] for i in range(0, len(R), 6)]
+    S_boxes = []
+    for i in range(8):
+        S_boxes.append(sbox_substitution(R[i], i))
+
+
+    result = [nibble for S_box in S_boxes for nibble in S_box]
+
+    # Perform permutation using P
+    result = [result[p - 1] for p in P]
+    print(f"S-box permutation: {''.join([str(bit) for bit in result])}\n")
+
+    return result
+
+
+def encrypt(block: list, subkeys: list) -> list:
+    """
+
+    :param block:
+    :param subkeys:
+    :return ciphertext:
+    """
+
+    # permuted block
+    block = initial_permutation(block)
+
+    print(f"Initial permutation result: {block}\n\n")
+
+    # left and right permuted input blocks
+    L, R = block[:32], block[32:]
+
+    # DES cycles
+    for i in range(16):
+        print(f'Iteration: {i + 1}')
+        print(f'L_i-1:\n{"".join([str(bit) for bit in L])}\n\n'
+              f'R_i-1:\n{"".join([str(bit) for bit in R])}\n\n')
+        temp = R
+        R = xor(L, f_function(R, subkeys[i]))
+        L = temp
+
+    # inverse initial permutation
+    ciphertext = inverse_initial_permutation(R + L)
+
+    return ciphertext
+
+
+# TODO: Implement
+def decrypt(ciphertext: list, key: list) -> list:
+    ciphertext = initial_permutation(ciphertext)
+    L, R = ciphertext[:32], ciphertext[32:]
+    subkeys = key_schedule(key)
+    for i in range(15, -1, -1):
+        temp = R
+        R = L ^ f_function(R, subkeys[i])
+        L = temp
+    block = inverse_initial_permutation(R + L)
+    return block
+
+
 def process_plain_text(filename: str) -> list:
     """
     Converts text file into a list of 64-bit blocks
@@ -132,6 +259,8 @@ def process_plain_text(filename: str) -> list:
     """
     with open(filename, 'r') as file:
         text = file.read()
+
+    print(f'Text to encrypt: {text}')
 
     # list containing bytes representing each character in text file
     bytes = [format(ord(char), '08b') for char in text if char.isalnum()]
@@ -158,18 +287,16 @@ def process_plain_text(filename: str) -> list:
 
 def generate_key(password: str) -> list:
     """
-    Converts password into a 64-bit key
+    Converts password into a 56-bit key
     :param password: string user input
     :return key: list of bits representing password
     """
 
     # list containing bytes representing each character in password
-    bytes = [format(ord(char), '08b') for char in password if char.isalnum()]
+    bytes = [format(ord(char), '07b') for char in password if char.isalnum()]
 
-    # flat list of 64 bits representing password
+    # flat list of 56 bits representing password
     key = [int(bit) for byte in bytes for bit in byte]
-
-    print("Key generated successfully.")
 
     return key
 
@@ -200,9 +327,27 @@ def input_password() -> str:
 
 
 def main():
+    # uncomment the lines bellow and comment the password to run full code
     # password = input_password()
     # key = generate_key(password)
-    key = generate_key('password')
+    password = 'password'    # delete after testing
+    key = generate_key(password)        # delete after testing
     blocks = process_plain_text('plaintext.txt')
+    print(f'Key: {password}\n')
+
+    subkeys = key_schedule(key)
+    for a in range(len(subkeys)):
+        print(f'Key {a+1} is {"".join([str(bit) for bit in subkeys[a]])}')
+
+    print(f'Data after preprocessing:')
+    for block in blocks:
+        for i in range(0, len(block), 8):
+            print(''.join([str(bit) for bit in block[i:i+8]]))
+        print()
+
+
+    for i in range(len(blocks)):
+        print(f'\nBlock: {i+1}')
+        encrypt(blocks[i], subkeys)
 
 main()
