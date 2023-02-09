@@ -1,3 +1,11 @@
+import logging
+
+# TODO: use logging instead of file.write()
+# TODO: perform input validation for repeatability
+# TODO: perform input validation for input_filename, cipher_filename, output_filename
+
+output_file = open('output.txt', 'w')
+
 # initial permutation table IP
 IP = [58, 50, 42, 34, 26, 18, 10, 2,
       60, 52, 44, 36, 28, 20, 12, 4,
@@ -9,7 +17,7 @@ IP = [58, 50, 42, 34, 26, 18, 10, 2,
       63, 55, 47, 39, 31, 23, 15, 7]
 
 # inverse initial permutation table IP^-1
-IP_inverse = [40, 8, 48, 16, 56, 24, 64, 32,
+IP_INVERSE = [40, 8, 48, 16, 56, 24, 64, 32,
               39, 7, 47, 15, 55, 23, 63, 31,
               38, 6, 46, 14, 54, 22, 62, 30,
               37, 5, 45, 13, 53, 21, 61, 29,
@@ -94,7 +102,7 @@ P = [16, 7, 20, 21,
      22, 11, 4, 25]
 
 
-def xor(block1: list, block2: list) -> list:
+def xor(block1: list, block2: list):
     """
     Performs the XOR operation on two blocks of same dimensions
     :param block1: list of first operand
@@ -102,10 +110,11 @@ def xor(block1: list, block2: list) -> list:
     :return: block with result of XOR operation
     """
     if len(block1) != len(block2):
-        print("Invalid operation. Inputs need to have same dimensions.")
+        output_file.write("Invalid operation. Inputs need to have same dimensions.")
         return
 
     return [a ^ b for a, b in zip(block1, block2)]
+
 
 def initial_permutation(block: list) -> list:
     """
@@ -122,17 +131,19 @@ def inverse_initial_permutation(block: list) -> list:
     :arg block: list of 64 bits
     :return: list of 64 bits after inverse initial permutation
     """
-    return [block[x - 1] for x in IP_inverse]
+    return [block[x - 1] for x in IP_INVERSE]
 
 
-def sbox_substitution(input_block, sbox_index):
+def sbox_substitution(six_bit: list, sbox_index: int) -> list:
     """
-    Performs sbox substitution for one input block
-    :param input_block: list of 6 bits
+    Performs sbox substitution for one six bit input block
+    :param six_bit: list of 6 int bits
+    :param sbox_index: int ranging from numbers 0-7
     :return: list of 4 bits
     """
-    row = int(''.join(str(b) for b in input_block[0:2]), 2)
-    column = int(''.join(str(b) for b in input_block[2:6]), 2)
+
+    row = int(''.join(str(b) for b in [six_bit[0], six_bit[5]]), 2)
+    column = int(''.join(str(b) for b in six_bit[1:5]), 2)
     output = S[sbox_index][row][column]
     output = format(output, '04b')
     output = [int(bit) for bit in output]
@@ -154,11 +165,11 @@ def key_schedule(key: list) -> list:
         else:
             bit.append(1)
     key_after_parity = [bit for byte in key_after_parity for bit in byte]
-    print(f"Key before permute but after parity is:\n{''.join([str(bit) for bit in key_after_parity])}\n")
+    output_file.write(f"\nKey before permute but after parity is:\n{''.join([str(bit) for bit in key_after_parity])}\n")
 
     # Permute the key using PC1 table
     key_after_permutation = [key_after_parity[x - 1] for x in PC1]
-    print(f"Key after permute is:\n{''.join([str(bit) for bit in key_after_permutation])}\n")
+    output_file.write(f"\nKey after permute is:\n{''.join([str(bit) for bit in key_after_permutation])}\n")
 
     # Split the key into left and right 28-bit halves
     C, D = key_after_permutation[:28], key_after_permutation[28:]
@@ -184,80 +195,92 @@ def f_function(R: list, subkey: list) -> list:
     Performs the f function on a 32-bit block and a 48-bit subkey
     :arg R: list of 32 bits (half block) of initial permutation input
     :arg subkey: list of 48 bits obtained from key_schedule
-    :return: # TODO: Check return value for correctness
+    :return: list of 32 bits (result of f-function)
     """
     # Expand the 32-bit block to 48-bits using E table
     R = [R[x - 1] for x in E]
-    print(f"Expansion permutation: {''.join([str(bit) for bit in R])}\n")
+    output_file.write(f"\nExpansion permutation: {''.join([str(bit) for bit in R])}\n")
 
     # XOR the expanded block with the subkey
     R = [x ^ y for x, y in zip(R, subkey)]
-    print(f"XOR with key: {''.join([str(bit) for bit in R])}\n")
+    output_file.write(f"\nXOR with key: {''.join([str(bit) for bit in R])}\n")
 
     # Perform S-Box substitution using S
     R = [R[i:i + 6] for i in range(0, len(R), 6)]
+
     S_boxes = []
     for i in range(8):
         S_boxes.append(sbox_substitution(R[i], i))
 
     result = [nibble for S_box in S_boxes for nibble in S_box]
-
-    # TODO: Missing potential bit shift
+    output_file.write(f"\nS-box permutation: {''.join([str(bit) for bit in result])}\n")
 
     # Perform permutation using P
     result = [result[p - 1] for p in P]
-    print(f"S-box permutation: {''.join([str(bit) for bit in result])}\n")
+    output_file.write(f"\nP-box permutation: {''.join([str(bit) for bit in result])}")
 
     return result
 
 
-def encrypt(block: list, subkeys: list) -> list:
+def encrypt(plain_text_block: list, subkeys: list) -> list:
     """
     Encrypts a block of input text and performs 16 DES cycles
-    :param block: list of 64 bits
+    :param plain_text_block: list of 64 bits
     :param subkeys: list of 48 bits
     :return: list of 64 bits of encrypted text
     """
 
     # permuted block
-    block = initial_permutation(block)
+    plain_text_block = initial_permutation(plain_text_block)
 
-    print(f"Initial permutation result: {block}\n\n")
+    output_file.write(f"Initial permutation result: {''.join([str(b) for b in plain_text_block])}\n\n")
 
     # left and right permuted input blocks
-    L, R = block[:32], block[32:]
+    L, R = plain_text_block[:32], plain_text_block[32:]
 
     # DES cycles
     for i in range(16):
-        print(f'Iteration: {i + 1}')
-        print(f'L_i-1:\n{"".join([str(bit) for bit in L])}\n\n'
-              f'R_i-1:\n{"".join([str(bit) for bit in R])}\n\n')
+        output_file.write(f'\nIteration: {i + 1}\n')
+        output_file.write(f'L_i-1:\n{"".join([str(bit) for bit in L])}\n\n'
+                          f'R_i-1:\n{"".join([str(bit) for bit in R])}\n\n')
         temp = R
         R = xor(L, f_function(R, subkeys[i]))
+        output_file.write(f"\n\nXOR with L_i-1 (This is R_i):\n{''.join([str(bit) for bit in R])}\n")
         L = temp
 
     # inverse initial permutation
     ciphertext = inverse_initial_permutation(R + L)
 
+    output_file.write(f"\n\nFinal permutation: {''.join([str(bit) for bit in ciphertext])}\n\n\n")
+
     return ciphertext
 
-# TODO: Check for correctness because encryption is incorrect
-def decrypt(ciphertext: list, key: list) -> list:
+
+def decrypt(ciphertext: list, subkeys: list) -> list:
     """
-    Decrypts block of 64 bits to return original plain text
+    Decrypts block of cipher text to return original plain text
     :param ciphertext: list of 64 bits
-    :param key: list of 48 bits # TODO: check process of decrypting
+    :param subkeys: list of 48 bits
     :return: list of 64 bits of original plain text
     """
 
+    # permuted block
     ciphertext = initial_permutation(ciphertext)
+
+    # left and right permuted input blocks
     L, R = ciphertext[:32], ciphertext[32:]
-    subkeys = key_schedule(key)
+
+    # reverse DES cycles for decryption
     for i in range(15, -1, -1):
         temp = R
         R = xor(L, f_function(R, subkeys[i]))
         L = temp
+
+    # inverse initial permutation
     block = inverse_initial_permutation(R + L)
+
+    output_file.write(f"\n\nDecrypted block: {''.join([str(bit) for bit in block])}")
+
     return block
 
 
@@ -270,7 +293,7 @@ def process_plain_text(filename: str) -> list:
     with open(filename, 'r') as file:
         text = file.read()
 
-    print(f'Text to encrypt: {text}')
+    output_file.write(f'Text to encrypt: {text}')
 
     # list containing bytes representing each character in text file
     bytes = [format(ord(char), '08b') for char in text if char.isalnum()]
@@ -284,10 +307,6 @@ def process_plain_text(filename: str) -> list:
 
     # list containing only bits
     bits = [bit for byte in bits for bit in byte]
-
-    # blocks = []
-    # for i in range(0, len(bits), 64):
-    #     blocks.append(bits[i:i+64])
 
     # list containing blocks of 64 bits
     blocks = [bits[i:i + 64] for i in range(0, len(bits), 64)]
@@ -337,27 +356,32 @@ def input_password() -> str:
 
 
 def main():
-    # uncomment the lines bellow and comment the password to run full code
-    # password = input_password()
-    # key = generate_key(password)
-    password = 'password'    # delete after testing
-    key = generate_key(password)        # delete after testing
-    blocks = process_plain_text('plaintext.txt')
-    print(f'Key: {password}\n')
+    # user input
+    password = input_password()
+    key = generate_key(password)
+
+    plain_text_blocks = process_plain_text('plaintext.txt')
+    output_file.write(f'\nKey: {password}\n')
 
     subkeys = key_schedule(key)
     for a in range(len(subkeys)):
-        print(f'Key {a+1} is {"".join([str(bit) for bit in subkeys[a]])}')
+        output_file.write(f'\nKey {a + 1} is {"".join([str(bit) for bit in subkeys[a]])}')
 
-    print(f'Data after preprocessing:')
-    for block in blocks:
-        for i in range(0, len(block), 8):
-            print(''.join([str(bit) for bit in block[i:i+8]]))
-        print()
+    output_file.write(f'\n\nData after preprocessing:\n')
+    for block in plain_text_blocks:
+        for block_index in range(0, len(block), 8):
+            output_file.write(''.join([str(bit) for bit in block[block_index:block_index + 8]]))
+        output_file.write('\n')
 
+    cipher_text_blocks = []
+    for cipher_outer_index in range(len(plain_text_blocks)):
+        output_file.write(f'\nBlock: {cipher_outer_index + 1}\n')
+        cipher_text_blocks.append(encrypt(plain_text_blocks[cipher_outer_index], subkeys))
 
-    for i in range(len(blocks)):
-        print(f'\nBlock: {i+1}')
-        encrypt(blocks[i], subkeys)
+    decrypted_plain_text = []
+    output_file.write(f"\n\n\nDecryption routine: \n\n\n")
+    for cipher_text_block in cipher_text_blocks:
+        decrypted_plain_text.append(decrypt(cipher_text_block, subkeys))
+
 
 main()
